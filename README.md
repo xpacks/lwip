@@ -8,14 +8,14 @@ lwIP - A Lightweight TCP/IP stack, with a POSIX layer adapter.
 
 * type: [xcdl](http://xcdl.github.io)
 * yotta name: `ilg-lwip`
-* yotta repo: http://yotta.mbed.com/#/module/ilg-lwip/1.4.1-0
+* yotta repo: http://yotta.mbed.com/#/module/ilg-lwip/1.4.1-1
 * git repo: https://github.com/xpacks/lwip.git
 * homepage: https://github.com/xpacks/lwip
 * latest archive: https://github.com/xpacks/lwip/archive/xpack.zip
 
 ## Version
 
-* 1.4.1-0
+* 1.4.1-1
 
 ## Releases
 
