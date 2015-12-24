@@ -1,11 +1,11 @@
 /**
  * @file
- * Functions common to all TCP/IPv4 modules, such as the byte order functions.
  *
+ * DHCPv6.
  */
 
 /*
- * Copyright (c) 2001-2004 Swedish Institute of Computer Science.
+ * Copyright (c) 2010 Inico Technologies Ltd.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without modification,
@@ -32,11 +32,19 @@
  *
  * This file is part of the lwIP TCP/IP stack.
  *
- * Author: Adam Dunkels <adam@sics.se>
+ * Author: Ivan Delamer <delamer@inicotech.com>
  *
+ *
+ * Please coordinate changes and requests with Ivan Delamer
+ * <delamer@inicotech.com>
  */
 
 #include "lwip/opt.h"
 
-#include "lwip/inet.h"
+#if LWIP_IPV6 && LWIP_IPV6_DHCP6 /* don't build if not configured for use in lwipopts.h */
 
+#include "lwip/ip6_addr.h"
+#include "lwip/def.h"
+
+
+#endif /* LWIP_IPV6 && LWIP_IPV6_DHCP6 */

@@ -42,13 +42,13 @@
 #include "lwip/opt.h"
 
 #include "lwip/timers.h"
-#include "lwip/tcp_impl.h"
+#include "lwip/priv/tcp_priv.h"
 
 #if LWIP_TIMERS
 
 #include "lwip/def.h"
 #include "lwip/memp.h"
-#include "lwip/tcpip.h"
+#include "lwip/priv/tcpip_priv.h"
 
 #include "lwip/ip_frag.h"
 #include "netif/etharp.h"
@@ -109,6 +109,7 @@ tcp_timer_needed(void)
 }
 #endif /* LWIP_TCP */
 
+#if LWIP_IPV4
 #if IP_REASSEMBLY
 /**
  * Timer callback function that calls ip_reass_tmr() and reschedules itself.
@@ -202,6 +203,7 @@ igmp_timer(void *arg)
   sys_timeout(IGMP_TMR_INTERVAL, igmp_timer, NULL);
 }
 #endif /* LWIP_IGMP */
+#endif /* LWIP_IPV4 */
 
 #if LWIP_DNS
 /**
@@ -222,6 +224,7 @@ dns_timer(void *arg)
 /** Initialize this module */
 void sys_timeouts_init(void)
 {
+#if LWIP_IPV4
 #if IP_REASSEMBLY
   sys_timeout(IP_TMR_INTERVAL, ip_reass_timer, NULL);
 #endif /* IP_REASSEMBLY */
@@ -238,6 +241,7 @@ void sys_timeouts_init(void)
 #if LWIP_IGMP
   sys_timeout(IGMP_TMR_INTERVAL, igmp_timer, NULL);
 #endif /* LWIP_IGMP */
+#endif /* LWIP_IPV4 */
 #if LWIP_DNS
   sys_timeout(DNS_TMR_INTERVAL, dns_timer, NULL);
 #endif /* LWIP_DNS */
@@ -267,16 +271,34 @@ sys_timeout(u32_t msecs, sys_timeout_handler handler, void *arg)
 #endif /* LWIP_DEBUG_TIMERNAMES */
 {
   struct sys_timeo *timeout, *t;
+#if NO_SYS
+  u32_t now, diff;
+#endif
 
   timeout = (struct sys_timeo *)memp_malloc(MEMP_SYS_TIMEOUT);
   if (timeout == NULL) {
     LWIP_ASSERT("sys_timeout: timeout != NULL, pool MEMP_SYS_TIMEOUT is empty", timeout != NULL);
     return;
   }
+
+#if NO_SYS
+  now = sys_now();
+  if (next_timeout == NULL) {
+    diff = 0;
+    timeouts_last_time = now;
+  } else {
+    diff = now - timeouts_last_time;
+  }
+#endif
+
   timeout->next = NULL;
   timeout->h = handler;
   timeout->arg = arg;
+#if NO_SYS
+  timeout->time = msecs + diff;
+#else
   timeout->time = msecs;
+#endif
 #if LWIP_DEBUG_TIMERNAMES
   timeout->handler_name = handler_name;
   LWIP_DEBUGF(TIMERS_DEBUG, ("sys_timeout: %p msecs=%"U32_F" handler=%s arg=%p\n",
@@ -293,7 +315,7 @@ sys_timeout(u32_t msecs, sys_timeout_handler handler, void *arg)
     timeout->next = next_timeout;
     next_timeout = timeout;
   } else {
-    for(t = next_timeout; t != NULL; t = t->next) {
+    for (t = next_timeout; t != NULL; t = t->next) {
       timeout->time -= t->time;
       if (t->next == NULL || t->next->time > timeout->time) {
         if (t->next != NULL) {
@@ -309,10 +331,8 @@ sys_timeout(u32_t msecs, sys_timeout_handler handler, void *arg)
 
 /**
  * Go through timeout list (for this task only) and remove the first matching
- * entry, even though the timeout has not triggered yet.
- *
- * @note This function only works as expected if there is only one timeout
- * calling 'handler' in the list of timeouts.
+ * entry (subsequent entries remain untouched), even though the timeout has not
+ * triggered yet.
  *
  * @param handler callback function that would be called by the timeout
  * @param arg callback argument that would be passed to handler
@@ -368,8 +388,7 @@ sys_check_timeouts(void)
     now = sys_now();
     /* this cares for wraparounds */
     diff = now - timeouts_last_time;
-    do
-    {
+    do {
 #if PBUF_POOL_FREE_OOSEQ
       PBUF_CHECK_FREE_OOSEQ();
 #endif /* PBUF_POOL_FREE_OOSEQ */
@@ -378,7 +397,7 @@ sys_check_timeouts(void)
       if (tmptimeout && (tmptimeout->time <= diff)) {
         /* timeout has expired */
         had_one = 1;
-        timeouts_last_time = now;
+        timeouts_last_time += tmptimeout->time;
         diff -= tmptimeout->time;
         next_timeout = tmptimeout->next;
         handler = tmptimeout->h;
@@ -395,7 +414,7 @@ sys_check_timeouts(void)
         }
       }
     /* repeat until all expired timers have been called */
-    }while(had_one);
+    } while (had_one);
   }
 }
 
@@ -408,6 +427,24 @@ void
 sys_restart_timeouts(void)
 {
   timeouts_last_time = sys_now();
+}
+
+/** Return the time left before the next timeout is due. If no timeouts are
+ * enqueued, returns 0xffffffff
+ */
+u32_t
+sys_timeouts_sleeptime(void)
+{
+  u32_t diff;
+  if (next_timeout == NULL) {
+    return 0xffffffff;
+  }
+  diff = sys_now() - timeouts_last_time;
+  if (diff > next_timeout->time) {
+    return 0;
+  } else {
+    return next_timeout->time - diff;
+  }
 }
 
 #else /* NO_SYS */
@@ -438,7 +475,7 @@ sys_timeouts_mbox_fetch(sys_mbox_t *mbox, void **msg)
     }
 
     if (time_needed == SYS_ARCH_TIMEOUT) {
-      /* If time == SYS_ARCH_TIMEOUT, a timeout occured before a message
+      /* If time == SYS_ARCH_TIMEOUT, a timeout occurred before a message
          could be fetched. We should now call the timeout handler and
          deallocate the memory allocated for the timeout. */
       tmptimeout = next_timeout;

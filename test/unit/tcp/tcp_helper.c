@@ -1,9 +1,10 @@
 #include "tcp_helper.h"
 
-#include "lwip/tcp_impl.h"
+#include "lwip/priv/tcp_priv.h"
 #include "lwip/stats.h"
 #include "lwip/pbuf.h"
 #include "lwip/inet_chksum.h"
+#include "lwip/ip_addr.h"
 
 #if !LWIP_STATS || !TCP_STATS || !MEMP_STATS
 #error "This tests needs TCP- and MEMP-statistics enabled"
@@ -46,6 +47,7 @@ tcp_create_segment_wnd(ip_addr_t* src_ip, ip_addr_t* dst_ip,
   struct ip_hdr* iphdr;
   struct tcp_hdr* tcphdr;
   u16_t pbuf_len = (u16_t)(sizeof(struct ip_hdr) + sizeof(struct tcp_hdr) + data_len);
+  LWIP_ASSERT("data_len too big", data_len <= 0xFFFF);
 
   p = pbuf_alloc(PBUF_RAW, pbuf_len, PBUF_POOL);
   EXPECT_RETNULL(p != NULL);
@@ -62,8 +64,8 @@ tcp_create_segment_wnd(ip_addr_t* src_ip, ip_addr_t* dst_ip,
 
   iphdr = p->payload;
   /* fill IP header */
-  iphdr->dest.addr = dst_ip->addr;
-  iphdr->src.addr = src_ip->addr;
+  iphdr->dest.addr = ip_2_ip4(dst_ip)->addr;
+  iphdr->src.addr = ip_2_ip4(src_ip)->addr;
   IPH_VHL_SET(iphdr, 4, IP_HLEN / 4);
   IPH_TOS_SET(iphdr, 0);
   IPH_LEN_SET(iphdr, htons(p->tot_len));
@@ -85,15 +87,15 @@ tcp_create_segment_wnd(ip_addr_t* src_ip, ip_addr_t* dst_ip,
     /* let p point to TCP data */
     pbuf_header(p, -(s16_t)sizeof(struct tcp_hdr));
     /* copy data */
-    pbuf_take(p, data, data_len);
+    pbuf_take(p, data, (u16_t)data_len);
     /* let p point to TCP header again */
     pbuf_header(p, sizeof(struct tcp_hdr));
   }
 
   /* calculate checksum */
 
-  tcphdr->chksum = inet_chksum_pseudo(p, src_ip, dst_ip,
-          IP_PROTO_TCP, p->tot_len);
+  tcphdr->chksum = ip_chksum_pseudo(p,
+          IP_PROTO_TCP, p->tot_len, src_ip, dst_ip);
 
   pbuf_header(p, sizeof(struct ip_hdr));
 
@@ -238,36 +240,43 @@ test_tcp_new_counters_pcb(struct test_tcp_counters* counters)
 void test_tcp_input(struct pbuf *p, struct netif *inp)
 {
   struct ip_hdr *iphdr = (struct ip_hdr*)p->payload;
-  ip_addr_copy(current_iphdr_dest, iphdr->dest);
-  ip_addr_copy(current_iphdr_src, iphdr->src);
-  current_netif = inp;
-  current_header = iphdr;
+  /* these lines are a hack, don't use them as an example :-) */
+  ip_addr_copy_from_ip4(*ip_current_dest_addr(), iphdr->dest);
+  ip_addr_copy_from_ip4(*ip_current_src_addr(), iphdr->src);
+  ip_current_netif() = inp;
+  ip_data.current_ip4_header = iphdr;
+
+  /* since adding IPv6, p->payload must point to tcp header, not ip header */
+  pbuf_header(p, -(s16_t)sizeof(struct ip_hdr));
 
   tcp_input(p, inp);
 
-  current_iphdr_dest.addr = 0;
-  current_iphdr_src.addr = 0;
-  current_netif = NULL;
-  current_header = NULL;
+  ip_addr_set_zero(ip_current_dest_addr());
+  ip_addr_set_zero(ip_current_src_addr());
+  ip_current_netif() = NULL;
+  ip_data.current_ip4_header = NULL;
 }
 
 static err_t test_tcp_netif_output(struct netif *netif, struct pbuf *p,
-       ip_addr_t *ipaddr)
+       const ip4_addr_t *ipaddr)
 {
   struct test_tcp_txcounters *txcounters = (struct test_tcp_txcounters*)netif->state;
   LWIP_UNUSED_ARG(ipaddr);
-  txcounters->num_tx_calls++;
-  txcounters->num_tx_bytes += p->tot_len;
-  if (txcounters->copy_tx_packets) {
-    struct pbuf *p_copy = pbuf_alloc(PBUF_LINK, p->tot_len, PBUF_RAM);
-    err_t err;
-    EXPECT(p_copy != NULL);
-    err = pbuf_copy(p_copy, p);
-    EXPECT(err == ERR_OK);
-    if (txcounters->tx_packets == NULL) {
-      txcounters->tx_packets = p_copy;
-    } else {
-      pbuf_cat(txcounters->tx_packets, p_copy);
+  if (txcounters != NULL)
+  {
+    txcounters->num_tx_calls++;
+    txcounters->num_tx_bytes += p->tot_len;
+    if (txcounters->copy_tx_packets) {
+      struct pbuf *p_copy = pbuf_alloc(PBUF_LINK, p->tot_len, PBUF_RAM);
+      err_t err;
+      EXPECT(p_copy != NULL);
+      err = pbuf_copy(p_copy, p);
+      EXPECT(err == ERR_OK);
+      if (txcounters->tx_packets == NULL) {
+        txcounters->tx_packets = p_copy;
+      } else {
+        pbuf_cat(txcounters->tx_packets, p_copy);
+      }
     }
   }
   return ERR_OK;
@@ -278,12 +287,14 @@ void test_tcp_init_netif(struct netif *netif, struct test_tcp_txcounters *txcoun
 {
   struct netif *n;
   memset(netif, 0, sizeof(struct netif));
-  memset(txcounters, 0, sizeof(struct test_tcp_txcounters));
+  if (txcounters != NULL) {
+    memset(txcounters, 0, sizeof(struct test_tcp_txcounters));
+    netif->state = txcounters;
+  }
   netif->output = test_tcp_netif_output;
-  netif->state = txcounters;
-  netif->flags |= NETIF_FLAG_UP;
-  ip_addr_copy(netif->netmask, *netmask);
-  ip_addr_copy(netif->ip_addr, *ip_addr);
+  netif->flags |= NETIF_FLAG_UP | NETIF_FLAG_LINK_UP;
+  ip4_addr_copy(netif->netmask, *ip_2_ip4(netmask));
+  ip4_addr_copy(netif->ip_addr, *ip_2_ip4(ip_addr));
   for (n = netif_list; n != NULL; n = n->next) {
     if (n == netif) {
       return;
