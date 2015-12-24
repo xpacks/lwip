@@ -1,0 +1,24 @@
+{
+	"name": "ilg-lwip",
+	"description": "lwIP - A Lightweight TCP/IP stack, with a POSIX layer adapter.",
+	"version": "1.4.1-0",
+	"keywords": [
+		"tcp/ip",
+		"net",
+		"lwip",
+		"posix",
+		"xpack",
+		"xcdl"
+	],
+	"author": "Liviu Ionescu <ilg@livius.net>",
+	"homepage": "https://github.com/xpacks/lwip",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/xpacks/lwip.git"
+	},
+	"bugs": {
+		"url": "https://github.com/xpacks/lwip/issues"
+	},
+	"license": "LicenseRef-COPYING",
+	"dependencies": {}
+}

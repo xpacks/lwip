@@ -1,0 +1,74 @@
+{
+	"$schema": "http://xcdl.github.io/schemas/xpack-1-1.json",
+	"name": "ilg-lwip",
+	"title": "lwIP",
+	"description": "lwIP - A Lightweight TCP/IP stack, with a POSIX layer adapter.",
+	"xcdlFile": ".xcdl.json",
+	"repository": 
+	{
+		"type": "git",
+		"url": "https://github.com/xpacks/lwip.git",
+		"archive": "https://github.com/xpacks/lwip/archive/xpack.zip"
+	},
+
+	"version": "1.4.1-0",
+	"releases": [
+		
+	],
+
+	"keywords": [
+		"tcp/ip",
+		"net",
+		"lwip",
+		"posix"
+	],
+
+	"homepage": "https://github.com/xpacks/lwip",
+	"support": [
+		{
+			"description": "All issues.",
+			"url": "https://github.com/xpacks/lwip/issues"
+		}
+	],
+
+	"license": "LicenseRef-COPYING",
+	"maintainers": [
+		{
+			"name": "Liviu Ionescu",
+			"email": "ilg@livius.net",
+			"url": "http://liviusdotnet.worldpress.com"
+		}
+	],
+
+	"contributors": [
+		{
+			"name": "Adam Dunkels",
+			"email": "adam@sics.se",
+			"url": "http://dunkels.com/adam/"
+		},
+
+		{
+			"name": "Leon Woestenberg",
+			"email": "leon.woestenberg@gmx.net"
+		},
+
+		{
+			"name": "Simon Goldschmidt",
+			"email": "goldsimon@gmx.net",
+			"url": "http://savannah.nongnu.org/users/goldsimon"
+		},
+
+		{
+			"name": "Liviu Ionescu",
+			"email": "ilg@livius.net",
+			"url": "http://liviusdotnet.worldpress.com"
+		}
+	],
+
+	"dependencies": [
+		{
+			"name": "ilg-posix-io",
+			"version": ">=1.0.0"
+		}
+	]
+}
